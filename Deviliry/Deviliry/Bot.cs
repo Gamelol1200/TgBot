@@ -162,6 +162,22 @@ namespace Deviliry
                     }
 
                 });
+                InlineKeyboardMarkup Pizza = new(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Маргарита",callbackData:"Маргарита")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Четыре сыра",callbackData:"Четыре сыра")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Пеперони",callbackData:"Пеперони")
+                    }
+
+                });
 
 
                 switch (update.Type)
@@ -208,7 +224,8 @@ namespace Deviliry
                                     }
                                     db.SaveChanges();
                                 }
-                                await client.SendTextMessageAsync(chatId,"Аддрес добавлен ,выберите следующие действия",replyMarkup:mainMenu);
+                                await client.SendTextMessageAsync(chatId,"Аддрес добавлен ,выберите следующие действия"
+                                    ,replyMarkup:mainMenu);
                             }
                             return;
                         }
@@ -268,19 +285,28 @@ namespace Deviliry
                                     }
                                 case "Назад":
                                     {
-                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, replyMarkup: mainMenu);
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, 
+                                            replyMarkup: mainMenu);
                                         return;
                                     }
                                 case "Напитки":
                                     {
-                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, replyMarkup: drink);
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, 
+                                            replyMarkup: drink);
                                         return;
                                     }
                                 case "Еда":
                                     {
-                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, replyMarkup: Eat);
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId,
+                                             replyMarkup: Eat);
                                         return;
                                     }
+                                //case "Пицца":
+                                //    {
+                                //        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId,
+                                //             replyMarkup: Pizza);
+                                //        return;
+                                //    }
 
                             }
                             return;
