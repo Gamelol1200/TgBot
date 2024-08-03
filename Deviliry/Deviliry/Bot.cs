@@ -12,6 +12,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.InputFiles;
 using System.Collections;
 using DataBase;
+using System.Net;
 
 
 
@@ -22,7 +23,8 @@ namespace Deviliry
     {
         private const string _token = "7469164812:AAFxy9q6HQb7V303DpXW0OaPYqGDv2mgJWM";
         private TelegramBotClient _client = new TelegramBotClient(_token);
-        string _record = string.Empty;
+        string _cart = string.Empty;
+        private DataBase.ApplicationContext db = new DataBase.ApplicationContext();
         public async Task Start()
         {
             using CancellationTokenSource cts = new CancellationTokenSource();
@@ -71,7 +73,7 @@ namespace Deviliry
                 {
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData(text:"Заказать еду или напиток",callbackData:"Заказать еду или напиток"),
+                        InlineKeyboardButton.WithCallbackData(text:"Заказать еду и напиток",callbackData:"Заказать еду и напиток"),
                     },
                     new[]
                     {
@@ -119,7 +121,7 @@ namespace Deviliry
                     new[]
                     {
                         InlineKeyboardButton.WithCallbackData(text:"Водичка",callbackData:"Водичка"),
-                        InlineKeyboardButton.WithCallbackData(text:"Кокалёка",callbackData:"Кокалёка"),
+                        InlineKeyboardButton.WithCallbackData(text:"Газировка",callbackData:"Газировка"),
                     },
                     new[]
                     {
@@ -162,7 +164,7 @@ namespace Deviliry
                     }
 
                 });
-                InlineKeyboardMarkup Pizza = new(new[]
+                InlineKeyboardMarkup pizza = new(new[]
                 {
                     new[]
                     {
@@ -175,9 +177,63 @@ namespace Deviliry
                     new[]
                     {
                         InlineKeyboardButton.WithCallbackData(text:"Пеперони",callbackData:"Пеперони")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"Назад")
                     }
-
                 });
+                InlineKeyboardMarkup juice = new(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Апельсиновый",callbackData:"Апельсиновый")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Яблочный",callbackData:"Яблочный")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Вишнёвый",callbackData:"Вишнёвый")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"Назад")
+                    },
+                });
+                InlineKeyboardMarkup gazirovka = new(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Спрайт",callbackData:"Спрайт"),
+                        InlineKeyboardButton.WithCallbackData(text:"Фанта",callbackData:"Фанта")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"Назад"),
+
+                    }
+                });
+                InlineKeyboardMarkup coffee = new(new[]
+               {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Американо",callbackData:"Американо"),
+                        InlineKeyboardButton.WithCallbackData(text:"Капучино",callbackData:"Капучино")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"Назад"),
+
+                    }
+                });
+                InlineKeyboardMarkup back = new(new[]
+                {
+                    InlineKeyboardButton.WithCallbackData(text:"Завершить покупки",callbackData:"Завершить покупки"),
+                    InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"back"),
+                });
+                
 
 
                 switch (update.Type)
@@ -200,33 +256,66 @@ namespace Deviliry
 
                                         return;
                                     }
+                                case "/shop":
+                                    {
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Clear();
+                                        db.SaveChanges();
+                                        await _client.SendTextMessageAsync(chatId,"Выберите следующую категорию",replyMarkup: mainMenu);
+                                        return;
+                                    }
 
                             }
-                            if (messageText.Contains("/address"))
+                            if (messageText.StartsWith("/address") && messageText.Length > 9)
                             {
-                                using (ApplicationContext db = new ApplicationContext())
+                                var userId = update.Message.From.Id;
+                                var address = messageText.Substring(9);
+                                if (!db.Users.Any(x => x.IdTelegram == userId))
                                 {
-                                    var userId = update.Message.From.Id;
-                                    if (!db.Users.Any(x => x.IdTelegram == userId))
+                                    DataBase.User user = new DataBase.User
                                     {
-                                        DataBase.User user = new DataBase.User
-                                        {
-                                            Name = update.Message.From.FirstName,
-                                            IdTelegram = userId,
-                                            Address = messageText[9..]
-                                        };
-                                        db.Users.Add(user);
-                                        
-                                    }
-                                    else
-                                    {
-                                        db.Users.FirstOrDefault(x=> x.IdTelegram == userId).Address = messageText[9..];
-                                    }
-                                    db.SaveChanges();
+                                        Name = update.Message.From.FirstName,
+                                        IdTelegram = userId,
+                                        Address = address
+                                    };
+                                    db.Users.Add(user);
+
                                 }
-                                await client.SendTextMessageAsync(chatId,"Аддрес добавлен ,выберите следующие действия"
-                                    ,replyMarkup:mainMenu);
+                                else
+                                {
+                                    var user = db.Users.FirstOrDefault(x => x.IdTelegram == userId);
+                                    if (user != null)
+                                    {
+                                        user.Address = address;
+                                    }
+
+                                }
+                                db.SaveChanges();
+                                await client.SendTextMessageAsync(chatId, "Адрес добавлен ,введите ваше имя");
+
                             }
+                            else if (!messageText.StartsWith("/name") && !messageText.StartsWith("/address"))
+                            {
+                                await client.SendTextMessageAsync(chatId, "Пожалуйста ,введите адрес в формате /address [Ваш адрес]");
+                            }
+                            if (messageText.StartsWith("/name"))
+                            {
+                                var userId = update.Message.From.Id;
+                                string name = messageText.Substring(5);
+                                var user = db.Users.FirstOrDefault(x => x.IdTelegram == userId);
+                                if (user != null)
+                                {
+                                    user.Name = name;
+                                }
+                                db.SaveChanges();
+                                await client.SendTextMessageAsync(chatId, "Учётная запись создана ,выберите следующие действия",
+                                    replyMarkup: mainMenu);
+
+                            }
+                            else
+                            {
+                                await client.SendTextMessageAsync(chatId, "Пожалуйста ,введите Имя в формате /name [Ваше имя]");
+                            }
+
                             return;
                         }
                     case UpdateType.CallbackQuery:
@@ -236,7 +325,7 @@ namespace Deviliry
                             switch (callbackQuery.Data)
                             {
                                 case "Заказать еду и напиток":
-                                    {                                       
+                                    {
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
                                         await _client.SendTextMessageAsync(chatId, "Выберите еду", replyMarkup: menu);
                                         return;
@@ -285,14 +374,14 @@ namespace Deviliry
                                     }
                                 case "Назад":
                                     {
-                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, 
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId,
                                             replyMarkup: mainMenu);
                                         return;
                                     }
                                 case "Напитки":
                                     {
-                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId, 
-                                            replyMarkup: drink);
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, "Выберите напиток", replyMarkup: drink);
                                         return;
                                     }
                                 case "Еда":
@@ -301,21 +390,233 @@ namespace Deviliry
                                              replyMarkup: Eat);
                                         return;
                                     }
-                                //case "Пицца":
-                                //    {
-                                //        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId,
-                                //             replyMarkup: Pizza);
-                                //        return;
-                                //    }
-
+                                case "Пицца":
+                                    {
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId
+                                             );
+                                        await _client.SendTextMessageAsync(chatId, "Выберите пиццу", replyMarkup: pizza);
+                                        return;
+                                    }
+                                case "Кофе":
+                                    {
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId
+                                             );
+                                        await _client.SendTextMessageAsync(chatId, "Выберите кофе", replyMarkup: coffee);
+                                        return;
+                                    }
+                                case "Сок":
+                                    {
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId
+                                             );
+                                        await _client.SendTextMessageAsync(chatId, "Выберите сок", replyMarkup: juice);
+                                        return;
+                                    }
+                                case "Газировка":
+                                    {
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, "Выберите газировку", replyMarkup: gazirovka);
+                                        return;
+                                    }
+                                case "Салатик":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x =>x.Name == "Салатик");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Салатик - {db.Products.FirstOrDefault(x => x.Name == "Салатик").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "back":
+                                    {
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, "Продолжить покупки", replyMarkup: Eat);
+                                        return;
+                                    }
+                                case "Картошечка":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Картошечка");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Картошечка - {db.Products.FirstOrDefault(x => x.Name == "Картошечка").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Четыре сыра":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Четыре сыра");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Четыре сыра - {db.Products.FirstOrDefault(x => x.Name == "Четыре сыра").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Пеперони":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Пеперони");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Пеперони - {db.Products.FirstOrDefault(x => x.Name == "Пеперони").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Маргарита":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Маргарита");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Маргарита - {db.Products.FirstOrDefault(x => x.Name == "Маргарита").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Суши":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Суши");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Суши - {db.Products.FirstOrDefault(x => x.Name == "Суши").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Шаурма":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Шаурма");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Шаурма - {db.Products.FirstOrDefault(x => x.Name == "Шаурма").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Бургер":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Бургер");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Бургер - {db.Products.FirstOrDefault(x => x.Name == "Бургер").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Котлетки":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Котлетки");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Котлетки - {db.Products.FirstOrDefault(x => x.Name == "Котлетки").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Шоколадка":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Шоколадка");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Шоколадка - {db.Products.FirstOrDefault(x => x.Name == "Шоколадка").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Водичка":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Водичка");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Водичка - {db.Products.FirstOrDefault(x => x.Name == "Водичка").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Спрайт":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Спрайт");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Спрайт - {db.Products.FirstOrDefault(x => x.Name == "Спрайт").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Фанта":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Фанта");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Фанта - {db.Products.FirstOrDefault(x => x.Name == "Фанта").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Американо":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Американо");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Американо - {db.Products.FirstOrDefault(x => x.Name == "Американо").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Капучино":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Капучино");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Капучино - {db.Products.FirstOrDefault(x => x.Name == "Капучино").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Вишнёвый":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Вишнёвый");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Вишнёвый - {db.Products.FirstOrDefault(x => x.Name == "Вишнёвый").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Апельсиновый":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Апельсиновый");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Апельсиновый - {db.Products.FirstOrDefault(x => x.Name == "Апельсиновый").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Яблочный":
+                                    {
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Яблочный");
+                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        db.SaveChanges();
+                                        _cart += $"Яблочный - {db.Products.FirstOrDefault(x => x.Name == "Яблочный").Price}руб.\n";
+                                        await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
+                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        return;
+                                    }
+                                case "Завершить покупки":
+                                    {
+                                        _cart = string.Empty;
+                                        await _client.SendTextMessageAsync(chatId, $"" +
+                                            $"Заказ создан,если хотите совершить новую покупку напишите '/shop'" );
+                                        return;
+                                    }
                             }
                             return;
 
 
+
+
                         }
-
-
-
                 }
             }
             catch (Exception)
