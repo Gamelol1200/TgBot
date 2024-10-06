@@ -1,12 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
-
 
 namespace DataBase
 {
@@ -14,24 +8,28 @@ namespace DataBase
     {
         public DbSet<User> Users { get; set; }
         public DbSet<Product> Products { get; set; }
-        //public ApplicationContext() : base()
-        //{
 
-        //    Database.EnsureCreated();
-        //}
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
             {
-                var builder = new ConfigurationBuilder()
-                    .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json")
-                    .Build();
-                var connectionString = builder.GetConnectionString("DefaultConnection");
-                optionsBuilder
+                // Попытка получить строку подключения из переменной окружения
+                var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
-                    .UseNpgsql(connectionString);
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    // Если переменная окружения не задана, используем appsettings.json
+                    var builder = new ConfigurationBuilder()
+                        .SetBasePath(Directory.GetCurrentDirectory())
+                        .AddJsonFile("appsettings.json")
+                        .Build();
+                    connectionString = builder.GetConnectionString("DefaultConnection");
+                }
+
+                // Настройка DbContext с использованием строки подключения
+                optionsBuilder.UseNpgsql(connectionString);
             }
         }
     }
 }
+

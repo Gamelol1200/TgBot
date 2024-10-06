@@ -13,6 +13,7 @@ using Telegram.Bot.Types.InputFiles;
 using System.Collections;
 using DataBase;
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 
 
 
@@ -24,6 +25,7 @@ namespace Deviliry
         private const string _token = "7469164812:AAFxy9q6HQb7V303DpXW0OaPYqGDv2mgJWM";
         private TelegramBotClient _client = new TelegramBotClient(_token);
         string _cart = string.Empty;
+        private long _id;
         private DataBase.ApplicationContext db = new DataBase.ApplicationContext();
         public async Task Start()
         {
@@ -233,13 +235,14 @@ namespace Deviliry
                     InlineKeyboardButton.WithCallbackData(text:"Завершить покупки",callbackData:"Завершить покупки"),
                     InlineKeyboardButton.WithCallbackData(text:"Назад",callbackData:"back"),
                 });
+
+
                 
-
-
                 switch (update.Type)
                 {
                     case UpdateType.Message:
                         {
+                            _id = update.Message.From.Id;
                             var message = update.Message;
                             if (message?.Text is not { } messageText)
                             {
@@ -267,14 +270,14 @@ namespace Deviliry
                             }
                             if (messageText.StartsWith("/address") && messageText.Length > 9)
                             {
-                                var userId = update.Message.From.Id;
+                                
                                 var address = messageText.Substring(9);
-                                if (!db.Users.Any(x => x.IdTelegram == userId))
+                                if (!db.Users.Any(x => x.IdTelegram == _id))
                                 {
                                     DataBase.User user = new DataBase.User
                                     {
                                         Name = update.Message.From.FirstName,
-                                        IdTelegram = userId,
+                                        IdTelegram = _id,
                                         Address = address
                                     };
                                     db.Users.Add(user);
@@ -282,7 +285,7 @@ namespace Deviliry
                                 }
                                 else
                                 {
-                                    var user = db.Users.FirstOrDefault(x => x.IdTelegram == userId);
+                                    var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
                                     if (user != null)
                                     {
                                         user.Address = address;
@@ -298,10 +301,9 @@ namespace Deviliry
                                 await client.SendTextMessageAsync(chatId, "Пожалуйста ,введите адрес в формате /address [Ваш адрес]");
                             }
                             if (messageText.StartsWith("/name"))
-                            {
-                                var userId = update.Message.From.Id;
+                            {                           
                                 string name = messageText.Substring(5);
-                                var user = db.Users.FirstOrDefault(x => x.IdTelegram == userId);
+                                var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
                                 if (user != null)
                                 {
                                     user.Name = name;
@@ -419,12 +421,30 @@ namespace Deviliry
                                     }
                                 case "Салатик":
                                     {
-                                        var product = db.Products.FirstOrDefault(x =>x.Name == "Салатик");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        var product = db.Products.FirstOrDefault(x => x.Name == "Салатик");
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Салатик' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.Include(u => u.Products).FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine(_id);
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Салатик - {db.Products.FirstOrDefault(x => x.Name == "Салатик").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Салатик - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/салат.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "back":
@@ -436,149 +456,405 @@ namespace Deviliry
                                 case "Картошечка":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Картошечка");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Картошечка' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            Console.WriteLine(callbackQuery.Message.From.Id);
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Картошечка - {db.Products.FirstOrDefault(x => x.Name == "Картошечка").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Картошечка - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/картошка.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Четыре сыра":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Четыре сыра");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Четыре сыра' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Четыре сыра - {db.Products.FirstOrDefault(x => x.Name == "Четыре сыра").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Четыре сыра - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/четыре сыра.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Пеперони":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Пеперони");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Пеперони' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Пеперони - {db.Products.FirstOrDefault(x => x.Name == "Пеперони").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Пеперони - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/peperoni.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Маргарита":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Маргарита");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Маргарита' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Маргарита - {db.Products.FirstOrDefault(x => x.Name == "Маргарита").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Маргарита - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/маргарита.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Суши":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Суши");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Суши' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Суши - {db.Products.FirstOrDefault(x => x.Name == "Суши").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Суши - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/суши.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Шаурма":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Шаурма");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Шаурма' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Шаурма - {db.Products.FirstOrDefault(x => x.Name == "Шаурма").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Шаурма - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/шаурма.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Бургер":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Бургер");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Бургер' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Бургер - {db.Products.FirstOrDefault(x => x.Name == "Бургер").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Бургер - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/бургер.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Котлетки":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Котлетки");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Котлетки' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Котлетки - {db.Products.FirstOrDefault(x => x.Name == "Котлетки").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Котлетки - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/котлеты.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Шоколадка":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Шоколадка");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Шоколадка' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Шоколадка - {db.Products.FirstOrDefault(x => x.Name == "Шоколадка").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Шоколадка - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/шоколадка.jpg", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Водичка":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Водичка");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Водичка' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Водичка - {db.Products.FirstOrDefault(x => x.Name == "Водичка").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Водичка - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/вода.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Спрайт":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Спрайт");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Спрайт' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Спрайт - {db.Products.FirstOrDefault(x => x.Name == "Спрайт").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Спрайт - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/спра.jpg", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Фанта":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Фанта");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Фанта' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Фанта - {db.Products.FirstOrDefault(x => x.Name == "Фанта").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Фанта - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/фанта.jpg", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Американо":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Американо");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Американо' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Американо - {db.Products.FirstOrDefault(x => x.Name == "Американо").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Американо - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/американо.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Капучино":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Капучино");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Капучино' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Капучино - {db.Products.FirstOrDefault(x => x.Name == "Капучино").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Капучино - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
-                                        await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
+                                        SendPhoto(chatId, "./photo/капучино.webp", $"Текущий чек\n\n{_cart}", back).Wait();
                                         return;
                                     }
                                 case "Вишнёвый":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Вишнёвый");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Вишнёвый' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Вишнёвый - {db.Products.FirstOrDefault(x => x.Name == "Вишнёвый").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Вишнёвый - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
                                         await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
                                         return;
@@ -586,9 +862,26 @@ namespace Deviliry
                                 case "Апельсиновый":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Апельсиновый");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Апельсиновый' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Апельсиновый - {db.Products.FirstOrDefault(x => x.Name == "Апельсиновый").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Апельсиновый - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
                                         await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
                                         return;
@@ -596,9 +889,26 @@ namespace Deviliry
                                 case "Яблочный":
                                     {
                                         var product = db.Products.FirstOrDefault(x => x.Name == "Яблочный");
-                                        db.Users.FirstOrDefault(x => x.IdTelegram == update.Message.From.Id).Products.Add(product);
+                                        if (product == null)
+                                        {
+                                            await _client.SendTextMessageAsync(chatId, "Product 'Яблочный' not found.");
+                                            return;
+                                        }
+
+                                        var user = db.Users.FirstOrDefault(x => x.IdTelegram == _id);
+                                        if (user == null)
+                                        {
+                                            Console.WriteLine("Пользователь не найден");
+                                            await _client.SendTextMessageAsync(chatId, "User not found.");
+                                            return;
+                                        }
+
+                                        user.Products.Add(product);
                                         db.SaveChanges();
-                                        _cart += $"Яблочный - {db.Products.FirstOrDefault(x => x.Name == "Яблочный").Price}руб.\n";
+
+                                        var productPrice = product.Price; // Cache the price to avoid another query
+                                        _cart += $"Яблочный - {productPrice}руб.\n";
+
                                         await _client.EditMessageReplyMarkupAsync(chatId, callbackQuery.Message.MessageId);
                                         await _client.SendTextMessageAsync(chatId, $"Текущий чек\n\n{_cart}", replyMarkup: back);
                                         return;
